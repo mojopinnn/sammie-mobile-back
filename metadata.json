@@ -1,0 +1,6 @@
+{
+  "name": "Ref Workspace",
+  "description": "A workspace with a reference folder.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
