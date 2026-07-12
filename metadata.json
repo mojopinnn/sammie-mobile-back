@@ -1,6 +1,6 @@
 {
-  "name": "Ref Workspace",
-  "description": "A workspace with a reference folder.",
+  "name": "Sammie Roto Web API Console",
+  "description": "Interactive API Console for headless video segmentation, propagation, and alpha matting.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
