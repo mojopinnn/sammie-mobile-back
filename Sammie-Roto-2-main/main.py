@@ -66,7 +66,7 @@ def read_root():
 
 
 @app.post("/upload-video")
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(file: UploadFile = File(...), model_name: Optional[str] = Query("Base")):
     """
     Upload a video file, decode its frames, and initialize the SAM2 predictor.
     """
@@ -82,6 +82,10 @@ async def upload_video(file: UploadFile = File(...)):
     try:
         from app_core import SammieWebKitCore
         core_instance = SammieWebKitCore.get_instance()
+        if model_name:
+            core_instance.settings_mgr.set_session_setting("sam_model", model_name)
+            core_instance.settings_mgr.set_app_setting("default_sam_model", model_name)
+            core_instance.settings_mgr.save_session_settings()
         metadata = core_instance.load_video(file_path)
         return JSONResponse(content=metadata)
     except Exception as e:

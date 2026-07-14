@@ -253,6 +253,10 @@ class SamManager:
         display_update_frequency = settings_mgr.get_app_setting("display_update_frequency", 5)
         total_frames = (max_frame_num_to_track + 1) if max_frame_num_to_track is not None else core.VideoInfo.total_frames
 
+        has_gui = QApplication.instance() is not None
+        if not has_gui:
+            show_progress = False
+
         progress_dialog = None
         if show_progress:
             progress_dialog = QProgressDialog("Tracking...", "Cancel", 0, 100, parent_window)
@@ -285,9 +289,10 @@ class SamManager:
                 try:
                     parent_window.frame_slider.setValue(out_frame_idx)
                 except Exception as e:
-                    print(f"Error updating display: {e}")
+                    pass
 
-            QApplication.processEvents()
+            if has_gui:
+                QApplication.processEvents()
             if progress_dialog is not None and progress_dialog.wasCanceled():
                 cancelled = True
                 break
@@ -817,11 +822,14 @@ def load_video(video_file, parent_window):
     os.makedirs(core.matting_dir)
     print(f"Loading video: {video_file}")
 
-    progress_dialog = QProgressDialog("Loading video...", "Cancel", 0, 100, parent_window)
-    progress_dialog.setWindowTitle("Progress")
-    progress_dialog.setWindowModality(Qt.WindowModal)
-    progress_dialog.setAutoClose(True)
-    progress_dialog.show()
+    has_gui = QApplication.instance() is not None
+    progress_dialog = None
+    if has_gui:
+        progress_dialog = QProgressDialog("Loading video...", "Cancel", 0, 100, parent_window)
+        progress_dialog.setWindowTitle("Progress")
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.setAutoClose(True)
+        progress_dialog.show()
 
     container = av.open(video_file)
     stream = container.streams.video[0]
@@ -885,11 +893,12 @@ def load_video(video_file, parent_window):
             frame_count += 1
             progress.update(1)
 
-            if total_frames:
+            if total_frames and progress_dialog:
                 progress_dialog.setValue(frame_count * 100 // total_frames)
-            QApplication.processEvents()
+            if has_gui:
+                QApplication.processEvents()
 
-            if progress_dialog.wasCanceled():
+            if progress_dialog and progress_dialog.wasCanceled():
                 cancelled = True
                 break
 
@@ -909,7 +918,8 @@ def load_video(video_file, parent_window):
             t.join()
         if os.path.exists(core.temp_dir):
             shutil.rmtree(core.temp_dir)
-        progress_dialog.close()
+        if progress_dialog:
+            progress_dialog.close()
         print("Operation cancelled by user.")
         return 0
 
@@ -919,8 +929,9 @@ def load_video(video_file, parent_window):
     for t in writers:
         t.join()
 
-    progress_dialog.setValue(100)
-    progress_dialog.close()
+    if progress_dialog:
+        progress_dialog.setValue(100)
+        progress_dialog.close()
 
     core.VideoInfo.total_frames = frame_count
     return frame_count

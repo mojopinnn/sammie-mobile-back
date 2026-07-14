@@ -407,6 +407,55 @@ class ModelDownloadDialog(QDialog):
 # Convenience helper
 # ---------------------------------------------------------------------------
 
+def _headless_download(specs: List[DownloadSpec], title: str) -> bool:
+    print(f"[SammieHeadlessDownloader] Starting headless download for {len(specs)} model(s)...")
+    session = requests.Session()
+    session.headers.update({"Accept-Encoding": "identity"})
+    
+    for idx, spec in enumerate(specs):
+        if spec.already_downloaded():
+            print(f"[{idx+1}/{len(specs)}] {spec.filename} already downloaded.")
+            continue
+            
+        print(f"[{idx+1}/{len(specs)}] Downloading {spec.filename} from {spec.url}...")
+        Path(spec.dest_dir).mkdir(parents=True, exist_ok=True)
+        
+        try:
+            response = session.get(spec.url, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            total_size = int(response.headers.get("content-length", 0))
+            downloaded = 0
+            chunk_size = 1024 * 1024
+            
+            with open(spec.part_path, "wb") as f:
+                with tqdm(total=total_size, unit="B", unit_scale=True, desc=spec.filename) as pbar:
+                    for chunk in response.iter_content(chunk_size):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            pbar.update(len(chunk))
+                            
+            # Verify checksum
+            actual_md5 = _md5(spec.part_path)
+            if actual_md5 != spec.md5:
+                spec.part_path.unlink(missing_ok=True)
+                raise RuntimeError(
+                    f"Checksum mismatch for {spec.filename}.\n"
+                    f"  Expected : {spec.md5}\n"
+                    f"  Got      : {actual_md5}"
+                )
+                
+            # Atomic rename
+            spec.part_path.rename(spec.final_path)
+            print(f"[Success] Downloaded and verified {spec.filename}.")
+        except Exception as e:
+            print(f"[Error] Failed to download {spec.filename}: {e}")
+            return False
+            
+    return True
+
+
 def ensure_models(
     models: "str | DownloadSpec | List[str | DownloadSpec]",
     parent: "QWidget | None" = None,
@@ -448,6 +497,19 @@ def ensure_models(
     needed = [s for s in specs if not s.already_downloaded()]
     if not needed:
         return True
+
+    # Detect headless environment or lack of GUI parent in a backend server context
+    is_headless = (
+        os.environ.get("DISPLAY") is None 
+        or os.environ.get("K_SERVICE") is not None 
+        or os.environ.get("SERVER_SOFTWARE") is not None 
+        or "uvicorn" in sys.argv[0] 
+        or "gunicorn" in sys.argv[0]
+        or parent is None
+    )
+
+    if is_headless:
+        return _headless_download(needed, title=title)
 
     dlg = ModelDownloadDialog(needed, parent=parent, title=title)
     accepted = dlg.exec() == QDialog.Accepted

@@ -61,7 +61,7 @@ class ApplicationSettings:
     
     # Performance
     force_cpu: bool = False    
-    frame_format: str = "png"
+    frame_format: str = "jpg"
     display_update_frequency: int = 5
     
     # Deduplication
@@ -84,7 +84,7 @@ class SessionSettings:
     """Session-specific settings that are saved with each video/project"""
     # Video information
     video_file_path: str = ""
-    frame_format: str = "png"
+    frame_format: str = "jpg"
     video_width: int = 0
     video_height: int = 0
     video_fps: float = 0.0
