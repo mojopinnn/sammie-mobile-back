@@ -70,8 +70,12 @@ async def upload_video(file: UploadFile = File(...), model_name: Optional[str] =
     """
     Upload a video file, decode its frames, and initialize the SAM2 predictor.
     """
-    # 1. Save uploaded file to temp uploads
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    # 1. Save uploaded file to temp uploads using a robust, safe name
+    _, ext = os.path.splitext(file.filename)
+    if not ext:
+        ext = ".mp4"
+    safe_name = f"uploaded_video{ext}"
+    file_path = os.path.join(UPLOAD_DIR, safe_name)
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)

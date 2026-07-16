@@ -843,8 +843,16 @@ def load_video(video_file, parent_window):
     # frames may be None for some containers (e.g. MKV), fall back to counting
     core.VideoInfo.total_frames = stream.frames or 0
     total_frames = core.VideoInfo.total_frames
-    core.VideoInfo.color_space = src_cs = int(stream.codec_context.colorspace)  # 1=BT.709, 5=BT.601 etc.
-    src_range = int(stream.codec_context.color_range)  # 1=limited, 2=full
+    try:
+        src_cs = int(stream.codec_context.colorspace) if (stream.codec_context and stream.codec_context.colorspace is not None) else 1
+    except Exception:
+        src_cs = 1
+    core.VideoInfo.color_space = src_cs
+
+    try:
+        src_range = int(stream.codec_context.color_range) if (stream.codec_context and stream.codec_context.color_range is not None) else 1
+    except Exception:
+        src_range = 1
 
     frame_count = 0
     settings_mgr = get_settings_manager()
@@ -877,13 +885,21 @@ def load_video(video_file, parent_window):
 
     with tqdm(total=total_frames or None) as progress:
         for frame in container.decode(stream):
-            frame_rgb = frame.reformat(
-                format="rgb24",
-                src_colorspace=src_cs,
-                dst_colorspace=1,   # always output BT.709
-                src_color_range=src_range,
-                dst_color_range=2,  # always output full range for PNG
-            ).to_ndarray()
+            try:
+                frame_rgb = frame.reformat(
+                    format="rgb24",
+                    src_colorspace=src_cs,
+                    dst_colorspace=1,   # always output BT.709
+                    src_color_range=src_range,
+                    dst_color_range=2,  # always output full range for PNG
+                ).to_ndarray()
+            except Exception as reformat_err:
+                print(f"Warning: frame reformat with explicit colorspace/range failed: {reformat_err}. Trying simple conversion.")
+                try:
+                    frame_rgb = frame.reformat(format="rgb24").to_ndarray()
+                except Exception as simple_err:
+                    print(f"Error reformating frame {frame_count}: {simple_err}")
+                    continue
 
             # cv2.imwrite expects BGR
             frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
