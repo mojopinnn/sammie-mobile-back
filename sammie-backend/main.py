@@ -82,7 +82,28 @@ async def upload_video(file: UploadFile = File(...), model_name: Optional[str] =
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
         
-    # 2. Load the video into our inference singleton
+    # 2. Upload to GCS and run background cleanup of expired files
+    gcs_url = ""
+    try:
+        from gcs_helper import GCSManager
+        import threading
+        
+        filename = file.filename or "uploaded_video.mp4"
+        gcs_path = f"upload/{filename}"
+        print(f"[Backend] Uploading '{filename}' to GCS at gs://sg-mobile/{gcs_path}...")
+        gcs_url = GCSManager.upload_file(file_path, gcs_path)
+        
+        # Run cleanup of expired GCS files (>24 hours) asynchronously
+        cleanup_thread = threading.Thread(
+            target=GCSManager.delete_old_files, 
+            args=(24.0,), 
+            daemon=True
+        )
+        cleanup_thread.start()
+    except Exception as gcs_err:
+        print(f"[Backend] GCS upload/cleanup warning: {gcs_err}")
+
+    # 3. Load the video into our inference singleton
     try:
         from app_core import SammieWebKitCore
         core_instance = SammieWebKitCore.get_instance()
@@ -91,6 +112,8 @@ async def upload_video(file: UploadFile = File(...), model_name: Optional[str] =
             core_instance.settings_mgr.set_app_setting("default_sam_model", model_name)
             core_instance.settings_mgr.save_session_settings()
         metadata = core_instance.load_video(file_path)
+        if gcs_url:
+            metadata["uploaded_gcs_url"] = gcs_url
         return JSONResponse(content=metadata)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error initializing video inference engine: {str(e)}")

@@ -81,8 +81,9 @@ from tqdm import tqdm
 import hashlib
 
 def headless_ensure_models(keys, parent=None, title=None) -> bool:
-    """Headless model downloader that downloads required model checkpoints with md5 verification"""
+    """Headless model downloader that downloads required model checkpoints with md5 verification and GCS caching"""
     from sammie.model_downloader import MODEL_REGISTRY, _md5
+    from gcs_helper import GCSManager
     
     if isinstance(keys, str):
         if keys == "all":
@@ -97,19 +98,47 @@ def headless_ensure_models(keys, parent=None, title=None) -> bool:
             print(f"[Headless] Warning: Unknown model key {k}")
             continue
         spec = MODEL_REGISTRY[k]
+        
+        # Check local file
+        local_verified = False
         if spec.already_downloaded():
             try:
                 if _md5(spec.final_path) == spec.md5:
-                    print(f"[Headless] Model '{k}' is verified and ready.")
-                    continue
+                    print(f"[Headless] Model '{k}' is verified locally and ready.")
+                    local_verified = True
                 else:
-                    print(f"[Headless] Model '{k}' checksum mismatch. Re-downloading...")
+                    print(f"[Headless] Model '{k}' checksum mismatch locally. Re-downloading...")
             except Exception as e:
-                print(f"[Headless] MD5 check failed for {k}, re-downloading: {e}")
-                
+                print(f"[Headless] Local MD5 check failed for {k}, re-downloading: {e}")
+
+        if local_verified:
+            continue
+            
         os.makedirs(spec.dest_dir, exist_ok=True)
-        print(f"[Headless] Downloading {spec.filename}...")
+        gcs_path = f"sammie/models/{spec.filename}"
         
+        # Try downloading from GCS first
+        print(f"[Headless] Checking if model '{k}' exists on GCS at gs://sg-mobile/{gcs_path}...")
+        if GCSManager.file_exists(gcs_path):
+            print(f"[Headless] Model '{k}' found on GCS. Downloading from GCS...")
+            if GCSManager.download_file(gcs_path, str(spec.final_path)):
+                try:
+                    if _md5(spec.final_path) == spec.md5:
+                        print(f"[Headless] Model '{k}' downloaded from GCS and verified successfully.")
+                        continue
+                    else:
+                        print(f"[Headless] Model '{k}' downloaded from GCS but MD5 mismatched. Falling back to internet download...")
+                        spec.final_path.unlink(missing_ok=True)
+                except Exception as e:
+                    print(f"[Headless] MD5 check error for GCS downloaded {k}: {e}. Falling back to internet...")
+                    spec.final_path.unlink(missing_ok=True)
+            else:
+                print(f"[Headless] Failed to download '{k}' from GCS. Falling back to internet download...")
+        else:
+            print(f"[Headless] Model '{k}' not found on GCS. Downloading from internet...")
+            
+        # Download from internet
+        print(f"[Headless] Downloading {spec.filename} from internet...")
         try:
             r = requests.get(spec.url, stream=True, timeout=30)
             r.raise_for_status()
@@ -136,7 +165,12 @@ def headless_ensure_models(keys, parent=None, title=None) -> bool:
                 return False
                 
             spec.part_path.rename(spec.final_path)
-            print(f"[Headless] Finished downloading {spec.filename}")
+            print(f"[Headless] Finished downloading {spec.filename} from internet.")
+            
+            # Cache the newly downloaded model to GCS for next time
+            print(f"[Headless] Caching model '{k}' to GCS at gs://sg-mobile/{gcs_path}...")
+            GCSManager.upload_file(str(spec.final_path), gcs_path)
+            
         except Exception as e:
             print(f"[Headless] Error downloading model {k}: {e}")
             if spec.part_path.exists():
@@ -194,6 +228,15 @@ class SammieWebKitCore:
         Load video, decode frames, and initialize the SAM2 predictor.
         """
         print(f"[SammieWebKitCore] Loading video: {video_path}")
+        
+        # Sync from GCS upload folder if local file doesn't exist
+        filename = os.path.basename(video_path)
+        gcs_path = f"upload/{filename}"
+        from gcs_helper import GCSManager
+        if not os.path.exists(video_path) and GCSManager.file_exists(gcs_path):
+            print(f"[SammieWebKitCore] Local video missing. Syncing from GCS: gs://sg-mobile/{gcs_path}")
+            GCSManager.download_file(gcs_path, video_path)
+            
         self.current_video_path = video_path
         
         # 1. Reset points and clear previous session
@@ -289,6 +332,89 @@ class SammieWebKitCore:
             "propagated": self.sam_manager.propagated
         }
 
+    def compile_and_upload_video(self, view_mode: str) -> str:
+        """
+        Compile all frames of the current video rendered with view_mode into an MP4 file,
+        upload it to GCS, and return the GCS URL.
+        """
+        from sammie.core import VideoInfo
+        import cv2
+        import uuid
+        from gcs_helper import GCSManager
+        
+        total_frames = VideoInfo.total_frames
+        if total_frames <= 0:
+            print("[SammieWebKitCore] No frames to compile.")
+            return ""
+            
+        print(f"[SammieWebKitCore] Compiling video for mode '{view_mode}' with {total_frames} frames...")
+        
+        # Define local output path
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        local_filename = f"result_{view_mode}_{timestamp}_{uuid.uuid4().hex[:6]}.mp4"
+        local_path = os.path.join("temp_uploads", local_filename)
+        os.makedirs("temp_uploads", exist_ok=True)
+        
+        # Get video properties
+        width = VideoInfo.width
+        height = VideoInfo.height
+        fps = VideoInfo.fps if VideoInfo.fps > 0 else 24.0
+        
+        # Setup OpenCV video writer with standard mp4v codec
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(local_path, fourcc, fps, (width, height))
+        
+        try:
+            view_options = {
+                "view_mode": view_mode,
+                "show_masks": True,
+                "show_outlines": True,
+                "antialias": True,
+                "show_removal_mask": False,
+                "bgcolor": (0, 255, 0)
+            }
+            points = self.point_manager.get_all_points()
+            
+            from sammie.sammie import update_image
+            
+            for f in range(total_frames):
+                frame_rgb = update_image(
+                    slider_value=f,
+                    view_options=view_options,
+                    points=points,
+                    return_numpy=True
+                )
+                if frame_rgb is None:
+                    # Fallback to loading base frame
+                    from sammie.core import load_base_frame
+                    frame_rgb = load_base_frame(f)
+                    
+                if frame_rgb is not None:
+                    # Convert to BGR for OpenCV
+                    frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+                    writer.write(frame_bgr)
+                else:
+                    # Write blank/empty frame if load failed
+                    empty_frame = np.zeros((height, width, 3), dtype=np.uint8)
+                    writer.write(empty_frame)
+                    
+        finally:
+            writer.release()
+            
+        # Upload compiled video to GCS output path
+        gcs_filename = f"sammie/output/{local_filename}"
+        print(f"[SammieWebKitCore] Uploading compiled video to GCS: gs://sg-mobile/{gcs_filename}")
+        gcs_url = GCSManager.upload_file(local_path, gcs_filename)
+        
+        # Clean up local file after upload
+        try:
+            if os.path.exists(local_path):
+                os.remove(local_path)
+        except Exception as e:
+            print(f"[SammieWebKitCore] Error removing temp compiled video: {e}")
+            
+        return gcs_url
+
     def run_matting(self, combined: bool = False) -> Dict[str, Any]:
         """
         Perform high-quality alpha matting using MatAnyone/MatAnyone2.
@@ -310,9 +436,18 @@ class SammieWebKitCore:
             combined=combined
         )
         
+        gcs_url = ""
+        if success == 1:
+            # Compile a video composited over a solid green background
+            try:
+                gcs_url = self.compile_and_upload_video("Matting-BGcolor")
+            except Exception as e:
+                print(f"[SammieWebKitCore] Error compiling matting result video: {e}")
+        
         return {
             "status": "success" if success == 1 else "failed",
-            "matted": self.matting_manager.propagated
+            "matted": self.matting_manager.propagated,
+            "gcs_url": gcs_url
         }
 
     def run_removal(self) -> Dict[str, Any]:
@@ -330,8 +465,16 @@ class SammieWebKitCore:
             parent_window=dummy_win
         )
         
+        gcs_url = ""
+        if success == 1:
+            try:
+                gcs_url = self.compile_and_upload_video("ObjectRemoval")
+            except Exception as e:
+                print(f"[SammieWebKitCore] Error compiling removal result video: {e}")
+                
         return {
-            "status": "success" if success == 1 else "failed"
+            "status": "success" if success == 1 else "failed",
+            "gcs_url": gcs_url
         }
 
     def get_preview_frame(self, frame_number: int, view_mode: str = "Segmentation-Edit") -> bytes:

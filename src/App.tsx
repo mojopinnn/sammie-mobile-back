@@ -1283,9 +1283,25 @@ export default function App() {
                   </div>
                   <div className="bg-gray-950 rounded-xl p-4 border border-gray-800/80 font-mono text-xs h-[240px] overflow-y-auto flex flex-col justify-between">
                     {apiResponse ? (
-                      <pre className="text-emerald-300 overflow-x-auto whitespace-pre-wrap flex-1">
-                        {JSON.stringify(apiResponse, null, 2)}
-                      </pre>
+                      <div className="flex flex-col h-full justify-between">
+                        <pre className="text-emerald-300 overflow-x-auto whitespace-pre-wrap flex-1">
+                          {JSON.stringify(apiResponse, null, 2)}
+                        </pre>
+                        {(apiResponse.gcs_url || apiResponse.uploaded_gcs_url) && (
+                          <div className="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between">
+                            <span className="text-[11px] text-gray-400">GCS Output Video:</span>
+                            <a 
+                              href={apiResponse.gcs_url || apiResponse.uploaded_gcs_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs py-1.5 px-3.5 rounded-lg flex items-center shadow-lg shadow-emerald-500/20 transition duration-150"
+                            >
+                              <Download className="h-3.5 w-3.5 mr-1.5" />
+                              Download Video
+                            </a>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <div className="flex-1 flex items-center justify-center text-gray-500 italic text-center text-xs">
                         {apiLoading ? "Fetching live response payload..." : "No active response. Execute an endpoint to inspect results."}
