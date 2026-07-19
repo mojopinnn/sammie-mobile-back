@@ -44,25 +44,36 @@ class DummyApplication:
     @staticmethod
     def processEvents(*args, **kwargs):
         pass
+    @staticmethod
+    def instance(*args, **kwargs):
+        return None
 
 # Setup mock modules in sys.modules to prevent PySide6 import crashes
-sys.modules['PySide6'] = MagicMock()
-sys.modules['PySide6.QtWidgets'] = MagicMock()
-sys.modules['PySide6.QtCore'] = MagicMock()
-sys.modules['PySide6.QtGui'] = MagicMock()
+pyside6_mock = MagicMock()
+sys.modules['PySide6'] = pyside6_mock
 
-import PySide6.QtWidgets
-PySide6.QtWidgets.QProgressDialog = DummyProgressDialog
-PySide6.QtWidgets.QApplication = DummyApplication
-PySide6.QtWidgets.QMessageBox = MagicMock()
-PySide6.QtWidgets.QDialog = MagicMock()
+widgets_mock = MagicMock()
+sys.modules['PySide6.QtWidgets'] = widgets_mock
+pyside6_mock.QtWidgets = widgets_mock
 
-import PySide6.QtCore
-PySide6.QtCore.Qt = MagicMock()
+core_mock = MagicMock()
+sys.modules['PySide6.QtCore'] = core_mock
+pyside6_mock.QtCore = core_mock
 
-import PySide6.QtGui
-PySide6.QtGui.QPixmap = MagicMock()
-PySide6.QtGui.QImage = MagicMock()
+gui_mock = MagicMock()
+sys.modules['PySide6.QtGui'] = gui_mock
+pyside6_mock.QtGui = gui_mock
+
+# Assign our dummy/mock classes to both the sub-modules and the main module properties
+widgets_mock.QProgressDialog = DummyProgressDialog
+widgets_mock.QApplication = DummyApplication
+widgets_mock.QMessageBox = MagicMock()
+widgets_mock.QDialog = MagicMock()
+
+core_mock.Qt = MagicMock()
+
+gui_mock.QPixmap = MagicMock()
+gui_mock.QImage = MagicMock()
 
 # ==================== HEADLESS MODEL DOWNLOADER ====================
 import requests

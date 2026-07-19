@@ -205,8 +205,13 @@ def load_video_frames(
             compute_device=compute_device,
         )
     else:
+        abs_path = os.path.abspath(video_path) if is_str else "N/A"
+        exists = os.path.exists(video_path) if is_str else False
+        is_dir = os.path.isdir(video_path) if is_str else False
         raise NotImplementedError(
-            "Only MP4 video and JPEG folder are supported at this moment"
+            f"Only MP4 video and JPEG folder are supported at this moment. "
+            f"Received video_path: {video_path!r} (type: {type(video_path).__name__}), "
+            f"Absolute path: {abs_path}, Exists: {exists}, IsDir: {is_dir}"
         )
 
 

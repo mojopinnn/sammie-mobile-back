@@ -12,7 +12,7 @@ export default function App() {
 
   // Live integration config & states
   const [backendUrl, setBackendUrl] = useState<string>(
-    (import.meta as any).env?.VITE_BACKEND_URL || "https://sammie-backend-1077475897510.asia-northeast3.run.app"
+    (import.meta as any).env?.VITE_BACKEND_URL || "https://sammie-backend-1077475897510.us-central1.run.app"
   );
   const [connectionStatus, setConnectionStatus] = useState<"unknown" | "testing" | "online" | "offline">("unknown");
   const [selectedEndpointPath, setSelectedEndpointPath] = useState<string>("/upload-video");

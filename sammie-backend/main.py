@@ -53,7 +53,7 @@ class MattingRequest(BaseModel):
 def read_root():
     return {
         "app": "Sammie Roto Web Backend",
-        "status": "online",
+        "status": "online-debug-v2",
         "endpoints": [
             "/upload-video",
             "/segment-point",
