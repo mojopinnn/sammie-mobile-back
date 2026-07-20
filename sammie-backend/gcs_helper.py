@@ -183,5 +183,5 @@ class GCSManager:
                             blob.delete()
                         except Exception as delete_err:
                             print(f"[GCSManager] Error deleting {blob.name}: {delete_err}")
-         except Exception as e:
-             print(f"[GCSManager] Error during automatic cleanup on GCS: {e}")
+        except Exception as e:
+            print(f"[GCSManager] Error during automatic cleanup on GCS: {e}")
