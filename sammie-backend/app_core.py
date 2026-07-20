@@ -118,7 +118,8 @@ def headless_ensure_models(keys, parent=None, title=None) -> bool:
         gcs_path = f"sammie/models/{spec.filename}"
         
         # Try downloading from GCS first
-        print(f"[Headless] Checking if model '{k}' exists on GCS at gs://sg-mobile/{gcs_path}...")
+        from gcs_helper import BUCKET_NAME
+        print(f"[Headless] Checking if model '{k}' exists on GCS at gs://{BUCKET_NAME}/{gcs_path}...")
         if GCSManager.file_exists(gcs_path):
             print(f"[Headless] Model '{k}' found on GCS. Downloading from GCS...")
             if GCSManager.download_file(gcs_path, str(spec.final_path)):
@@ -168,7 +169,7 @@ def headless_ensure_models(keys, parent=None, title=None) -> bool:
             print(f"[Headless] Finished downloading {spec.filename} from internet.")
             
             # Cache the newly downloaded model to GCS for next time
-            print(f"[Headless] Caching model '{k}' to GCS at gs://sg-mobile/{gcs_path}...")
+            print(f"[Headless] Caching model '{k}' to GCS at gs://{BUCKET_NAME}/{gcs_path}...")
             GCSManager.upload_file(str(spec.final_path), gcs_path)
             
         except Exception as e:

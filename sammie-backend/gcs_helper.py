@@ -15,7 +15,7 @@ try:
 except ImportError:
     GCS_SUPPORTED = False
 
-BUCKET_NAME = "sg-mobile"
+BUCKET_NAME = "sg-mobile-storage"
 
 class GCSManager:
     _client = None
@@ -101,21 +101,68 @@ class GCSManager:
             return False
 
     @classmethod
+    def delete_old_local_files(cls, max_age_hours: float = 24.0):
+        """
+        Delete local files and folders inside 'temp_uploads' and 'temp' that are older than max_age_hours.
+        This keeps the Cloud Run container filesystem lean.
+        """
+        import shutil
+        now = time.time()
+        cutoff_sec = max_age_hours * 3600.0
+        
+        # 1. Clean 'temp_uploads' (where original videos are saved locally)
+        if os.path.exists("temp_uploads"):
+            print(f"[GCSManager] Scanning local 'temp_uploads' for files older than {max_age_hours} hours...")
+            for filename in os.listdir("temp_uploads"):
+                filepath = os.path.join("temp_uploads", filename)
+                try:
+                    if os.path.isfile(filepath) or os.path.islink(filepath):
+                        file_mtime = os.path.getmtime(filepath)
+                        if (now - file_mtime) > cutoff_sec:
+                            print(f"[GCSManager] Deleting local expired video upload file: {filepath}")
+                            os.remove(filepath)
+                except Exception as e:
+                    print(f"[GCSManager] Error deleting local file {filepath}: {e}")
+ 
+        # 2. Clean 'temp' directory contents (where intermediate frame cache and results are stored locally)
+        if os.path.exists("temp"):
+            print(f"[GCSManager] Scanning local 'temp' workspace folder for items older than {max_age_hours} hours...")
+            for item in os.listdir("temp"):
+                item_path = os.path.join("temp", item)
+                try:
+                    mtime = os.path.getmtime(item_path)
+                    if (now - mtime) > cutoff_sec:
+                        print(f"[GCSManager] Deleting local expired workspace item: {item_path}")
+                        if os.path.isdir(item_path):
+                            shutil.rmtree(item_path)
+                        else:
+                            os.remove(item_path)
+                except Exception as e:
+                    print(f"[GCSManager] Error deleting local temp item {item_path}: {e}")
+
+    @classmethod
     def delete_old_files(cls, max_age_hours: float = 24.0):
         """
-        Delete files older than max_age_hours inside upload/ and sammie/output/ folders in GCS.
+        Delete files older than max_age_hours inside upload/ and sammie/output/ folders in GCS,
+        and trigger local container cleanup. Note that sammie/models/ weights are NEVER deleted.
         """
+        # First, clean up the local container filesystem
+        try:
+            cls.delete_old_local_files(max_age_hours)
+        except Exception as local_err:
+            print(f"[GCSManager] Local cleanup warning: {local_err}")
+
         client = cls.get_client()
         bucket = cls.get_bucket()
         if not client or not bucket:
             print("[GCSManager] GCS client or bucket not available. Skipping automatic file cleanup.")
             return
-
+ 
         folders = ["upload/", "sammie/output/"]
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(hours=max_age_hours)
-        print(f"[GCSManager] Scanning for expired files older than {max_age_hours} hours (cutoff: {cutoff})...")
-
+        print(f"[GCSManager] Scanning GCS for expired files older than {max_age_hours} hours (cutoff: {cutoff})...")
+ 
         try:
             for folder in folders:
                 # List blobs with folder prefix
@@ -136,5 +183,5 @@ class GCSManager:
                             blob.delete()
                         except Exception as delete_err:
                             print(f"[GCSManager] Error deleting {blob.name}: {delete_err}")
-        except Exception as e:
-            print(f"[GCSManager] Error during automatic cleanup on GCS: {e}")
+         except Exception as e:
+             print(f"[GCSManager] Error during automatic cleanup on GCS: {e}")
