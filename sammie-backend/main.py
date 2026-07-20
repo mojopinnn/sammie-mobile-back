@@ -48,6 +48,9 @@ class TrackRequest(BaseModel):
 class MattingRequest(BaseModel):
     combined: bool = Field(False, description="Whether to run combined matting across all objects.")
 
+class CompileVideoRequest(BaseModel):
+    view_mode: str = Field("Matting-Matte", description="View mode to compile as video: Matting-Matte, Segmentation-BGcolor, ObjectRemoval, etc.")
+
 
 @app.get("/")
 def read_root():
@@ -60,6 +63,7 @@ def read_root():
             "/track-objects",
             "/run-matting",
             "/run-removal",
+            "/compile-video",
             "/preview"
         ]
     }
@@ -181,6 +185,21 @@ async def run_removal():
         return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Object removal inpainting failed: {str(e)}")
+
+
+@app.post("/compile-video")
+async def compile_video(req: CompileVideoRequest):
+    """
+    Manually compile a video of the current frames rendered with the specified view mode,
+    upload it to GCS, and return the GCS URL.
+    """
+    try:
+        from app_core import SammieWebKitCore
+        core_instance = SammieWebKitCore.get_instance()
+        gcs_url = core_instance.compile_and_upload_video(view_mode=req.view_mode)
+        return JSONResponse(content={"status": "success", "gcs_url": gcs_url})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to compile and upload video: {str(e)}")
 
 
 @app.get("/preview")

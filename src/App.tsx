@@ -380,6 +380,35 @@ export default function App() {
     }
   };
 
+  const [compileLoading, setCompileLoading] = useState<boolean>(false);
+
+  const compileVideo = async () => {
+    setCompileLoading(true);
+    addLog(`🎬 Manually compiling output video for view mode: '${viewMode}'...`);
+    const url = `${backendUrl.replace(/\/$/, "")}/compile-video`;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ view_mode: viewMode }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setApiResponse(data);
+        addLog(`[Success] Video compilation complete! GCS Link: ${data.gcs_url}`);
+      } else {
+        const errText = await response.text();
+        addLog(`[Error] Video compilation failed: ${errText}`);
+        alert(`동영상 컴파일 실패: ${errText}`);
+      }
+    } catch (err: any) {
+      addLog(`[Network Error] Video compile failed: ${err.message || err}`);
+      alert(`네트워크 오류로 컴파일 실패: ${err.message || err}`);
+    } finally {
+      setCompileLoading(false);
+    }
+  };
+
   const endpoints = [
     {
       path: "/upload-video",
@@ -1019,7 +1048,7 @@ export default function App() {
                     {apiResponse?.gcs_url ? (
                       <div className="space-y-4">
                         <p className="text-xs text-gray-400 leading-relaxed">
-                          Alpha Matting 마스크가 성공적으로 추출되어 클라우드 스토리지(GCS)에 결과 비디오가 컴파일되었습니다. 아래 플레이어에서 직접 재생하거나 즉시 다운로드할 수 있습니다:
+                          Alpha Matting 또는 Object Removal 마스크 결과가 클라우드 스토리지(GCS)에 성공적으로 컴파일되었습니다. 아래 플레이어에서 직접 재생하거나 즉시 다운로드할 수 있습니다:
                         </p>
                         
                         {/* Native HTML5 Video Player */}
@@ -1049,16 +1078,65 @@ export default function App() {
                             동영상 다운로드 (MP4)
                           </a>
                         </div>
+
+                        {/* Additional trigger to compile other view modes */}
+                        <div className="pt-2 border-t border-gray-800/60">
+                          <button
+                            onClick={compileVideo}
+                            disabled={compileLoading}
+                            className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition duration-150 ${
+                              compileLoading 
+                                ? "bg-gray-800 text-gray-400 border-gray-700 cursor-not-allowed" 
+                                : "bg-gray-900 hover:bg-gray-850 text-emerald-400 border-gray-800 hover:border-emerald-500/30"
+                            }`}
+                          >
+                            {compileLoading ? (
+                              <>
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-400" />
+                                <span>[{viewMode}] 모드로 새로운 동영상 제작 중 (10~20초 소요)...</span>
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                                <span>현재 뷰 [{viewMode}]로 동영상 새로 컴파일하기</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <div className="flex flex-col items-center justify-center py-6 text-center text-gray-500 italic text-xs space-y-2 bg-gray-950/40 rounded-xl border border-gray-800/60">
-                        <div className="h-8 w-8 rounded-full bg-gray-900/60 flex items-center justify-center mb-1 text-gray-600">
-                          <Play className="h-4 w-4" />
+                      <div className="space-y-4">
+                        <div className="flex flex-col items-center justify-center py-6 text-center text-gray-500 italic text-xs space-y-2 bg-gray-950/40 rounded-xl border border-gray-800/60">
+                          <div className="h-8 w-8 rounded-full bg-gray-900/60 flex items-center justify-center mb-1 text-gray-600">
+                            <Play className="h-4 w-4" />
+                          </div>
+                          <p className="max-w-md text-[11px] leading-relaxed text-gray-400 font-medium">
+                            아직 컴파일된 결과 비디오가 없습니다. <br />
+                            아래 버튼을 눌러 현재 활성화된 화면(<span className="text-emerald-400 font-semibold">{viewMode}</span>)을 기반으로 고화질 결과 비디오(.mp4)를 즉시 컴파일하고 클라우드(GCS)에 업로드할 수 있습니다!
+                          </p>
                         </div>
-                        <p className="max-w-md text-[11px] leading-relaxed text-gray-400 font-medium">
-                          아직 컴파일된 결과 비디오가 없습니다. <br />
-                          우측 패널의 <strong className="text-purple-400 font-bold">Step 4</strong>에서 <strong className="text-purple-400 font-bold">"Run Alpha Matte"</strong> 또는 <strong className="text-amber-400 font-bold">"Inpaint / Remove"</strong>를 실행하면 결과 비디오가 자동 생성되어 여기에 표시됩니다!
-                        </p>
+
+                        <button
+                          onClick={compileVideo}
+                          disabled={compileLoading}
+                          className={`w-full py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border transition duration-150 shadow-lg ${
+                            compileLoading 
+                              ? "bg-gray-800 text-gray-400 border-gray-700 cursor-not-allowed" 
+                              : "bg-emerald-500 hover:bg-emerald-400 text-black border-emerald-400 hover:scale-[1.01] active:scale-[0.99] shadow-emerald-500/15"
+                          }`}
+                        >
+                          {compileLoading ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 animate-spin text-emerald-400" />
+                              <span>[{viewMode}] 모드로 동영상 제작 및 GCS 업로드 중...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Video className="h-4 w-4" />
+                              <span>[{viewMode}] 모드로 결과물 동영상 즉시 컴파일 및 업로드</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>
