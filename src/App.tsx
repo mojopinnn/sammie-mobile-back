@@ -1001,6 +1001,67 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+
+                  {/* GCS Video Results Player & Download */}
+                  <div className="bg-[#161925] rounded-2xl border border-gray-800 p-5 space-y-4 shadow-xl">
+                    <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                      <div className="flex items-center space-x-2">
+                        <Video className="h-4 w-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-white tracking-wider uppercase">🎬 GCS 결과물 동영상 확인 및 다운로드</span>
+                      </div>
+                      {apiResponse?.gcs_url && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/20">
+                          추출 완료 (GCS)
+                        </span>
+                      )}
+                    </div>
+
+                    {apiResponse?.gcs_url ? (
+                      <div className="space-y-4">
+                        <p className="text-xs text-gray-400 leading-relaxed">
+                          Alpha Matting 마스크가 성공적으로 추출되어 클라우드 스토리지(GCS)에 결과 비디오가 컴파일되었습니다. 아래 플레이어에서 직접 재생하거나 즉시 다운로드할 수 있습니다:
+                        </p>
+                        
+                        {/* Native HTML5 Video Player */}
+                        <div className="relative aspect-video rounded-xl overflow-hidden bg-black border border-gray-800 shadow-inner">
+                          <video 
+                            src={apiResponse.gcs_url} 
+                            controls 
+                            className="w-full h-full object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-950 p-3.5 rounded-xl border border-gray-800/60 font-mono text-xs">
+                          <div className="truncate pr-4 flex-1">
+                            <div className="text-[9px] text-gray-500 uppercase tracking-wider">GCS Storage Path</div>
+                            <div className="text-emerald-400 font-medium truncate mt-0.5" title={apiResponse.gcs_url}>
+                              {apiResponse.gcs_url}
+                            </div>
+                          </div>
+                          <a 
+                            href={apiResponse.gcs_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs py-2 px-4 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20 transition duration-150 shrink-0"
+                          >
+                            <Download className="h-4 w-4 mr-1.5" />
+                            동영상 다운로드 (MP4)
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-6 text-center text-gray-500 italic text-xs space-y-2 bg-gray-950/40 rounded-xl border border-gray-800/60">
+                        <div className="h-8 w-8 rounded-full bg-gray-900/60 flex items-center justify-center mb-1 text-gray-600">
+                          <Play className="h-4 w-4" />
+                        </div>
+                        <p className="max-w-md text-[11px] leading-relaxed text-gray-400 font-medium">
+                          아직 컴파일된 결과 비디오가 없습니다. <br />
+                          우측 패널의 <strong className="text-purple-400 font-bold">Step 4</strong>에서 <strong className="text-purple-400 font-bold">"Run Alpha Matte"</strong> 또는 <strong className="text-amber-400 font-bold">"Inpaint / Remove"</strong>를 실행하면 결과 비디오가 자동 생성되어 여기에 표시됩니다!
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Right Section: Step-by-Step Roto Pipeline Control Panel (Col-span 4) */}
